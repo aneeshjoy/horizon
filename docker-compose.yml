@@ -1,0 +1,83 @@
+
+services:
+  horizon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: horizon-webui
+    ports:
+      - "8001:8000"
+    volumes:
+      # Mount data directory for persistent storage
+      - ./data:/app/data
+      # Mount config directory for configuration files
+      - ./config:/app/config
+
+      # Option 1: Mount Frigate database from local copy
+      # Place your frigate.db in ./data/external/ directory before starting
+      # - /path/to/your/frigate.db:/app/data/external/frigate.db:ro
+
+      # Option 2: Mount Frigate database from another Docker container
+      # If Frigate is running in Docker, use a shared volume
+      # - frigate-storage:/app/data/external:ro
+
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    extra_hosts:
+      # Use host gateway for local MQTT broker (macOS Docker networking fix)
+      - "host.docker.internal:host-gateway"
+    networks:
+      - horizon-network
+
+# Frigate Database Import Setup Instructions
+# =========================================
+#
+# Option A: Copy Frigate DB (Recommended for first-time import)
+# -------------------------------------------------------------
+# 1. Stop Frigate temporarily (to avoid DB lock)
+# 2. Copy Frigate database to Horizon data folder:
+#    cp /path/to/frigate/storage/frigate.db ./data/external/frigate.db
+# 3. Start Horizon container
+# 4. Enable auto-import in Configuration page (or set import_config.auto_import_on_startup: true)
+# 5. Click "Import from Database" or wait for auto-import on startup
+#
+# Option B: Docker Volume Mount (For continuous access)
+# -----------------------------------------------------
+# 1. Find Frigate's volume name: docker volume ls
+# 2. Add volume mount to horizon service above:
+#    volumes:
+#      - frigate-db:/app/data/external:ro
+# 3. Add external volume reference below:
+# volumes:
+#   frigate-db:
+#     external: true
+#     name: <frigate-volume-name>
+#
+# Option C: Home Assistant Frigate Add-on
+# ---------------------------------------
+# Frigate database location: /config/frigate/frigate.db
+# Add to horizon service volumes:
+#   - /homeassistant/homeassistant/config/frigate/frigate.db:/app/data/external/frigate.db:ro
+#
+# After Import:
+# -------------
+# 1. Check import status in Configuration page or API: /api/import/status
+# 2. Once complete, profiles are automatically built from imported events
+# 3. MQTT real-time integration will keep profiles updated going forward
+
+networks:
+  horizon-network:
+    driver: bridge
+
+# Uncomment for Option B (Docker volume mount)
+# volumes:
+#   frigate-db:
+#     external: true

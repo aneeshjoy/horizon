@@ -1,0 +1,154 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Horizon System Configuration",
+  "type": "object",
+  "required": ["pattern_detection", "classification", "display", "prediction"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Configuration version"
+    },
+    "last_modified": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last modification timestamp"
+    },
+    "pattern_detection": {
+      "type": "object",
+      "properties": {
+        "bucket_tolerance_minutes": {
+          "type": "integer",
+          "minimum": 15,
+          "maximum": 180,
+          "default": 45,
+          "description": "Time tolerance for matching readings to same bucket (minutes)"
+        },
+        "min_pattern_samples": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 10,
+          "default": 3,
+          "description": "Minimum readings required to form a pattern"
+        },
+        "confidence_threshold": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 0.65,
+          "description": "Minimum confidence score to accept a reading"
+        },
+        "ocr_similarity_threshold": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 1.0,
+          "default": 0.85,
+          "description": "Similarity score for OCR fuzzy matching"
+        }
+      }
+    },
+    "classification": {
+      "type": "object",
+      "properties": {
+        "commuter_threshold": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 80,
+          "description": "Minimum RDS score for Commuter classification"
+        },
+        "unknown_threshold": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 60,
+          "description": "Minimum RDS score for Unknown classification"
+        },
+        "pattern_adherence_weight": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 0.40,
+          "description": "Weight of pattern adherence in RDS calculation"
+        },
+        "confidence_stability_weight": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 0.30,
+          "description": "Weight of confidence stability in RDS calculation"
+        },
+        "pattern_concentration_weight": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 0.30,
+          "description": "Weight of pattern concentration in RDS calculation"
+        }
+      }
+    },
+    "display": {
+      "type": "object",
+      "properties": {
+        "grid_time_granularity_minutes": {
+          "type": "integer",
+          "minimum": 15,
+          "maximum": 120,
+          "default": 45,
+          "description": "Minutes per grid row (time bucket size)"
+        },
+        "bubble_size_scale": {
+          "type": "string",
+          "enum": ["small", "medium", "large"],
+          "default": "medium",
+          "description": "Bubble size scale"
+        },
+        "color_scheme": {
+          "type": "string",
+          "enum": ["modern", "traffic", "neutral"],
+          "default": "modern",
+          "description": "Color scheme for classifications"
+        },
+        "auto_refresh_interval_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600,
+          "default": 0,
+          "description": "Auto-refresh interval (0 = disabled)"
+        },
+        "trend_chart_data_points": {
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 24,
+          "default": 8,
+          "description": "Number of data points in trend charts"
+        }
+      }
+    },
+    "prediction": {
+      "type": "object",
+      "properties": {
+        "trend_window_weeks": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 12,
+          "default": 4,
+          "description": "Weeks to look back for trend calculation"
+        },
+        "min_prediction_samples": {
+          "type": "integer",
+          "minimum": 3,
+          "maximum": 20,
+          "default": 5,
+          "description": "Minimum total sightings required for predictions"
+        },
+        "num_alternative_predictions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "default": 3,
+          "description": "Number of alternative times to show"
+        }
+      }
+    }
+  }
+}

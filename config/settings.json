@@ -1,0 +1,44 @@
+{
+  "mqtt": {
+    "enabled": true,
+    "broker_host": "localhost",
+    "broker_port": 1883,
+    "username": "frigate",
+    "password": "frigate",
+    "client_id": "horizon-lpr",
+    "topic_prefix": "frigate",
+    "qos": 1,
+    "retry_interval": 5,
+    "max_retries": 10,
+    "connection_timeout": 30,
+    "timezone": "Europe/London",
+    "enabled_cameras": [
+      "lprcam"
+    ],
+    "enabled_cameras_mode": "whitelist"
+  },
+  "pattern_detection": {
+    "bucket_tolerance_minutes": 45,
+    "min_pattern_samples": 3,
+    "confidence_threshold": 0.65,
+    "ocr_similarity_threshold": 0.85
+  },
+  "classification": {
+    "commuter_threshold": 80,
+    "unknown_threshold": 60,
+    "pattern_adherence_weight": 0.4,
+    "confidence_stability_weight": 0.3,
+    "pattern_concentration_weight": 0.3
+  },
+  "display": {
+    "grid_time_granularity_minutes": 45,
+    "auto_refresh_interval_seconds": 0
+  },
+  "import_config": {
+    "auto_import_on_startup": false,
+    "auto_rebuild_after_import": true,
+    "import_db_path": "data/external/frigate.db",
+    "import_after_date": null
+  },
+  "last_modified": "2026-03-15T18:06:36.928761"
+}
