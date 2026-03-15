@@ -148,3 +148,4 @@ data/processed/*.json
 node_modules/
 .claude/
 .DS_Store
+data/.DS_Store
