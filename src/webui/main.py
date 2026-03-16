@@ -167,6 +167,11 @@ async def startup_event():
 
         if started:
             print("MQTT service started successfully")
+
+            # Inject ProfileManager into import service for coordinated rebuilds
+            from horizon.frigate.import_service import get_import_service
+            import_service = get_import_service(profile_manager=app.state.mqtt_service.profile_manager)
+            print("ProfileManager coordination enabled for rebuild service")
         else:
             print("Failed to start MQTT service")
             app.state.mqtt_service = None

@@ -10,12 +10,15 @@ import sqlite3
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 from pathlib import Path
 import threading
 import time
 
 from webui.models.config import ImportStatus
+
+if TYPE_CHECKING:
+    from horizon.mqtt.profile_manager import ProfileManager
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +75,13 @@ class FrigateImportService:
     detections from Frigate's SQLite database into the Horizon system.
     """
 
-    def __init__(self, events_file: str = "data/raw/frigate_events.jsonl"):
+    def __init__(
+        self,
+        events_file: str = "data/raw/frigate_events.jsonl",
+        profile_manager: Optional['ProfileManager'] = None
+    ):
         self.events_file = events_file
+        self.profile_manager = profile_manager
         self.jobs: Dict[str, FrigateImportJob] = {}
         self._lock = threading.Lock()
         self._ensure_directories()
@@ -417,7 +425,8 @@ class FrigateImportService:
             from horizon.rebuild.rebuild_service import get_rebuild_service
 
             async def run_rebuild():
-                rebuild_service = get_rebuild_service()
+                # Pass profile_manager to rebuild service for coordination
+                rebuild_service = get_rebuild_service(profile_manager=self.profile_manager)
                 rebuild_job_id = rebuild_service.start_rebuild()
                 logger.info(f"Auto-rebuild started: {rebuild_job_id}")
 
@@ -436,6 +445,16 @@ class FrigateImportService:
                 job.completed_at = datetime.now()
                 return True
         return False
+
+    def set_profile_manager(self, profile_manager: 'ProfileManager') -> None:
+        """
+        Set the ProfileManager for coordinated rebuilds.
+
+        Args:
+            profile_manager: ProfileManager instance to coordinate with
+        """
+        self.profile_manager = profile_manager
+        logger.info("ProfileManager set for coordinated rebuilds")
 
     def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
         """Get job status"""
@@ -460,9 +479,20 @@ class FrigateImportService:
 _import_service: Optional[FrigateImportService] = None
 
 
-def get_import_service() -> FrigateImportService:
-    """Get the singleton import service"""
+def get_import_service(profile_manager: Optional['ProfileManager'] = None) -> FrigateImportService:
+    """
+    Get the singleton import service.
+
+    Args:
+        profile_manager: Optional ProfileManager instance for coordinated rebuilds
+
+    Returns:
+        FrigateImportService instance
+    """
     global _import_service
     if _import_service is None:
-        _import_service = FrigateImportService()
+        _import_service = FrigateImportService(profile_manager=profile_manager)
+    elif profile_manager is not None and _import_service.profile_manager is None:
+        # Update profile manager if not set
+        _import_service.set_profile_manager(profile_manager)
     return _import_service

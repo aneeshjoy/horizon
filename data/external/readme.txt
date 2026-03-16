@@ -1,0 +1,1 @@
+copy frigate.db to this folder

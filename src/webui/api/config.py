@@ -2,8 +2,8 @@
 Configuration API endpoints
 """
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
-from typing import Dict
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from typing import Dict, Optional
 from src.webui.services.config_service import get_config_service
 from src.webui.models.config import (
     SystemConfig,
@@ -13,6 +13,24 @@ from src.webui.models.config import (
 
 
 router = APIRouter(prefix="/api/config", tags=["config"])
+
+
+def _get_profile_manager(request: Request) -> Optional['ProfileManager']:
+    """
+    Get ProfileManager from MQTT service if available.
+
+    Args:
+        request: FastAPI Request object
+
+    Returns:
+        ProfileManager instance or None
+    """
+    from horizon.mqtt.profile_manager import ProfileManager
+
+    mqtt_service = getattr(request.app.state, 'mqtt_service', None)
+    if mqtt_service is not None:
+        return mqtt_service.profile_manager
+    return None
 
 
 @router.get("", response_model=SystemConfig)
@@ -92,7 +110,7 @@ async def reset_config():
 
 
 @router.get("/reprocess/status", response_model=ReprocessStatus)
-async def get_reprocess_status():
+async def get_reprocess_status(request: Request):
     """
     Get status of ongoing or last reprocessing job
 
@@ -101,7 +119,8 @@ async def get_reprocess_status():
     """
     from horizon.rebuild.rebuild_service import get_rebuild_service
 
-    rebuild_service = get_rebuild_service()
+    profile_manager = _get_profile_manager(request)
+    rebuild_service = get_rebuild_service(profile_manager=profile_manager)
 
     # Get the most recent job
     job_status = rebuild_service.get_latest_job()
@@ -132,7 +151,7 @@ async def get_reprocess_status():
 
 
 @router.post("/reprocess/start")
-async def start_reprocess(background_tasks: BackgroundTasks):
+async def start_reprocess(request: Request, background_tasks: BackgroundTasks):
     """
     Start reprocessing all vehicle profiles from JSONL events
 
@@ -144,14 +163,15 @@ async def start_reprocess(background_tasks: BackgroundTasks):
     """
     from horizon.rebuild.rebuild_service import get_rebuild_service
 
-    rebuild_service = get_rebuild_service()
+    profile_manager = _get_profile_manager(request)
+    rebuild_service = get_rebuild_service(profile_manager=profile_manager)
     job_id = rebuild_service.start_rebuild()
 
     return {"job_id": job_id, "message": "Rebuild started"}
 
 
 @router.post("/reprocess/cancel")
-async def cancel_reprocess():
+async def cancel_reprocess(request: Request):
     """
     Cancel ongoing reprocessing job
 
@@ -160,7 +180,8 @@ async def cancel_reprocess():
     """
     from horizon.rebuild.rebuild_service import get_rebuild_service
 
-    rebuild_service = get_rebuild_service()
+    profile_manager = _get_profile_manager(request)
+    rebuild_service = get_rebuild_service(profile_manager=profile_manager)
 
     # Get most recent job
     job_status = rebuild_service.get_latest_job()

@@ -11,7 +11,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Optional, Callable, TYPE_CHECKING
 from uuid import uuid4
 
 import pytz
@@ -19,6 +19,9 @@ import pytz
 from webui.models.config import PatternDetectionConfig, SystemConfig
 from webui.services.config_service import get_config_service
 from horizon.processor import clean_plate_string, correct_ocr_error
+
+if TYPE_CHECKING:
+    from horizon.mqtt.profile_manager import ProfileManager
 
 logger = logging.getLogger(__name__)
 
@@ -55,13 +58,19 @@ class RebuildJob:
 class RebuildService:
     """Service for rebuilding plate profiles from JSONL events"""
 
-    def __init__(self, profiles_path: Optional[str] = None, events_path: Optional[str] = None):
+    def __init__(
+        self,
+        profiles_path: Optional[str] = None,
+        events_path: Optional[str] = None,
+        profile_manager: Optional['ProfileManager'] = None
+    ):
         """
         Initialize the rebuild service.
 
         Args:
             profiles_path: Path to plate_profiles.json
             events_path: Path to frigate_events.jsonl
+            profile_manager: Optional ProfileManager instance for coordinated writes
         """
         if profiles_path is None:
             from horizon.processor import PROFILES_FILE
@@ -72,6 +81,7 @@ class RebuildService:
 
         self.profiles_path = Path(profiles_path)
         self.events_path = Path(events_path)
+        self.profile_manager = profile_manager
         self.jobs: Dict[str, RebuildJob] = {}
         self._current_job: Optional[RebuildJob] = None
 
@@ -160,8 +170,8 @@ class RebuildService:
                 if i % 100 == 0:
                     logger.info(f"Rebuild progress: {job.processed_events}/{job.total_events} events")
 
-            # Save profiles
-            self._save_profiles(profiles)
+            # Save profiles (coordinated with ProfileManager if available)
+            await self._save_profiles(profiles)
 
             job.status = "completed"
             job.completed_at = datetime.now()
@@ -338,26 +348,39 @@ class RebuildService:
 
         return None
 
-    def _save_profiles(self, profiles: Dict[str, Dict]) -> None:
+    async def _save_profiles(self, profiles: Dict[str, Dict]) -> None:
         """
         Save profiles to disk.
+
+        If a ProfileManager is available, updates its in-memory profiles
+        and triggers a save through it to prevent race conditions with MQTT.
 
         Args:
             profiles: Dictionary of profiles to save
         """
         try:
-            # Ensure directory exists
-            self.profiles_path.parent.mkdir(parents=True, exist_ok=True)
+            if self.profile_manager is not None:
+                # Coordinate with MQTT ProfileManager to prevent race conditions
+                # Update the ProfileManager's in-memory profiles
+                async with self.profile_manager.lock:
+                    self.profile_manager.profiles = profiles
+                    # Trigger save through ProfileManager
+                    await self.profile_manager._save_now()
+                logger.info(f"Saved {len(profiles)} profiles through ProfileManager")
+            else:
+                # No ProfileManager, write directly to disk
+                # Ensure directory exists
+                self.profiles_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Write to temp file first (atomic)
-            temp_path = self.profiles_path.with_suffix('.tmp')
-            with open(temp_path, 'w') as f:
-                json.dump(profiles, f, indent=2, default=str)
+                # Write to temp file first (atomic)
+                temp_path = self.profiles_path.with_suffix('.tmp')
+                with open(temp_path, 'w') as f:
+                    json.dump(profiles, f, indent=2, default=str)
 
-            # Rename to actual file
-            temp_path.replace(self.profiles_path)
+                # Rename to actual file
+                temp_path.replace(self.profiles_path)
 
-            logger.info(f"Saved {len(profiles)} profiles to {self.profiles_path}")
+                logger.info(f"Saved {len(profiles)} profiles to {self.profiles_path}")
         except Exception as e:
             logger.error(f"Failed to save profiles: {e}")
             raise
@@ -393,6 +416,16 @@ class RebuildService:
             return True
         return False
 
+    def set_profile_manager(self, profile_manager: 'ProfileManager') -> None:
+        """
+        Set the ProfileManager for coordinated writes.
+
+        Args:
+            profile_manager: ProfileManager instance to coordinate with
+        """
+        self.profile_manager = profile_manager
+        logger.info("ProfileManager set for coordinated writes")
+
     def get_latest_job(self) -> Optional[Dict[str, Any]]:
         """
         Get the most recent job status.
@@ -410,9 +443,20 @@ class RebuildService:
 _rebuild_service: Optional[RebuildService] = None
 
 
-def get_rebuild_service() -> RebuildService:
-    """Get singleton rebuild service instance"""
+def get_rebuild_service(profile_manager: Optional['ProfileManager'] = None) -> RebuildService:
+    """
+    Get singleton rebuild service instance.
+
+    Args:
+        profile_manager: Optional ProfileManager instance for coordinated writes
+
+    Returns:
+        RebuildService instance
+    """
     global _rebuild_service
     if _rebuild_service is None:
-        _rebuild_service = RebuildService()
+        _rebuild_service = RebuildService(profile_manager=profile_manager)
+    elif profile_manager is not None and _rebuild_service.profile_manager is None:
+        # Update profile manager if not set
+        _rebuild_service.set_profile_manager(profile_manager)
     return _rebuild_service
